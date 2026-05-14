@@ -1,0 +1,346 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XPR Network Account Verifier</title>
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --card-bg: #161b22;
+            --text-color: #c9d1d9;
+            --accent-color: #58a6ff;
+            --border-color: #30363d;
+            --verified-color: #2ea043;
+            --unverified-color: #f85149;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 30px;
+            width: 100%;
+            max-width: 500px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+        }
+
+        h1 {
+            margin-top: 0;
+            font-size: 1.5rem;
+            color: #ffffff;
+            text-align: center;
+        }
+
+        p.subtitle {
+            text-align: center;
+            font-size: 0.9rem;
+            color: #8b949e;
+            margin-bottom: 20px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        input {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-color);
+            color: #ffffff;
+            border-radius: 6px;
+            font-size: 1rem;
+            outline: none;
+        }
+
+        input:focus {
+            border-color: var(--accent-color);
+        }
+
+        button {
+            padding: 12px 20px;
+            background-color: var(--accent-color);
+            color: #000000;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        button:disabled {
+            background-color: var(--border-color);
+            cursor: not-allowed;
+        }
+
+        .result-card {
+            display: none;
+            border-top: 1px solid var(--border-color);
+            padding-top: 20px;
+            margin-top: 20px;
+        }
+
+        .profile-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .avatar {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background-color: var(--border-color);
+            object-fit: cover;
+        }
+
+        .info h2 {
+            margin: 0;
+            font-size: 1.2rem;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .badge {
+            font-size: 0.8rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+            width: fit-content;
+            margin-top: 4px;
+        }
+
+        .badge.verified {
+            background-color: rgba(46, 160, 67, 0.15);
+            color: var(--verified-color);
+            border: 1px solid var(--verified-color);
+        }
+
+        .badge.unverified {
+            background-color: rgba(248, 81, 73, 0.15);
+            color: var(--unverified-color);
+            border: 1px solid var(--unverified-color);
+        }
+
+        .deep-dive {
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            overflow-x: auto;
+            color: #8b949e;
+        }
+
+        .deep-dive-title {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #8b949e;
+            margin-bottom: 5px;
+        }
+
+        .error {
+            color: var(--unverified-color);
+            text-align: center;
+            display: none;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>XPR Network Verifier</h1>
+    <p class="subtitle">Deep dive on-chain lookup for account verification</p>
+
+    <div class="input-group">
+        <input type="text" id="accountInput" placeholder="Enter XPR account name..." spellcheck="false">
+        <button id="checkBtn" onclick="checkAccount()">Check</button>
+    </div>
+
+    <div id="errorMessage" class="error">Account not found or network error.</div>
+
+    <div id="resultCard" class="result-card">
+        <div class="profile-header">
+            <img id="avatarImg" class="avatar" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60'><rect width='60' height='60' fill='%2330363d'/></svg>" alt="Avatar">
+            <div class="info">
+                <h2 id="displayName">Account Name</h2>
+                <div id="accName" style="color: #8b949e; font-size: 0.9rem;">@account</div>
+                <div id="statusBadge" class="badge">Checking...</div>
+            </div>
+        </div>
+
+        <div class="deep-dive-title">On-Chain Raw Data (eosio.proton:usersinfo)</div>
+        <pre id="rawData" class="deep-dive"></pre>
+    </div>
+</div>
+
+<script>
+    // UPDATED: Using a highly reliable XPR Network endpoint provided by EOSUSA
+    const RPC_ENDPOINT = 'https://proton.eosusa.io'; 
+    const IPFS_GATEWAY = 'https://ipfs.io/ipfs/';
+
+    async function checkAccount() {
+        const input = document.getElementById('accountInput').value.trim().toLowerCase();
+        const btn = document.getElementById('checkBtn');
+        const resultCard = document.getElementById('resultCard');
+        const errorMessage = document.getElementById('errorMessage');
+
+        if (!input) return;
+
+        // Reset UI
+        btn.disabled = true;
+        btn.innerText = "Querying...";
+        errorMessage.style.display = 'none';
+        resultCard.style.display = 'none';
+
+        // Prepare JSON payload for the EOSIO get_table_rows API
+        const payload = {
+            json: true,
+            code: "eosio.proton",      // Contract holding the data
+            scope: "eosio.proton",     // Scope of the table
+            table: "usersinfo",        // Table name
+            lower_bound: input,        // Search query start
+            upper_bound: input,        // Search query end
+            limit: 1
+        };
+
+        try {
+            const response = await fetch(`${RPC_ENDPOINT}/v1/chain/get_table_rows`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            // Check if account exists in the table
+            if (data.rows && data.rows.length > 0 && data.rows[0].acc === input) {
+                renderResult(data.rows[0]);
+            } else {
+                // If not in usersinfo, check if the account exists at all
+                await verifyAccountExists(input);
+            }
+        } catch (error) {
+            console.error("Fetch Error:", error);
+            showError("Network error while querying the XPR blockchain. Endpoint may be busy.");
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "Check";
+        }
+    }
+
+    async function verifyAccountExists(accountName) {
+        try {
+            const res = await fetch(`${RPC_ENDPOINT}/v1/chain/get_account`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ account_name: accountName })
+            });
+            
+            if (res.ok) {
+                // Account exists but has no usersinfo table entry
+                renderResult({
+                    acc: accountName,
+                    name: accountName,
+                    avatar: "",
+                    verified: 0,
+                    note: "No identity record found in eosio.proton contract."
+                });
+            } else {
+                showError("Account does not exist on the XPR Network.");
+            }
+        } catch (e) {
+            showError("Failed to verify account existence.");
+        }
+    }
+
+    function renderResult(userData) {
+        const resultCard = document.getElementById('resultCard');
+        const displayName = document.getElementById('displayName');
+        const accName = document.getElementById('accName');
+        const statusBadge = document.getElementById('statusBadge');
+        const avatarImg = document.getElementById('avatarImg');
+        const rawData = document.getElementById('rawData');
+
+        // Set Texts
+        displayName.innerText = userData.name ? userData.name : userData.acc;
+        accName.innerText = `@${userData.acc}`;
+
+        // Handle Verification Status
+        const isVerified = userData.verified === 1;
+        
+        if (isVerified) {
+            statusBadge.className = "badge verified";
+            statusBadge.innerHTML = "✓ Verified On-Chain";
+            displayName.innerHTML = `${userData.name ? userData.name : userData.acc} <span style="color: var(--verified-color)">✓</span>`;
+        } else {
+            statusBadge.className = "badge unverified";
+            statusBadge.innerText = "✕ Unverified";
+        }
+
+        // Handle Avatar
+        if (userData.avatar && userData.avatar.length > 0) {
+            if (userData.avatar.startsWith('Qm') || userData.avatar.startsWith('bafy')) {
+                avatarImg.src = `${IPFS_GATEWAY}${userData.avatar}`;
+            } else if (userData.avatar.startsWith('http')) {
+                avatarImg.src = userData.avatar;
+            } else {
+                avatarImg.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60'><rect width='60' height='60' fill='%2330363d'/></svg>";
+            }
+        } else {
+            avatarImg.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60'><rect width='60' height='60' fill='%2330363d'/></svg>";
+        }
+
+        // Dump Raw JSON
+        rawData.innerText = JSON.stringify(userData, null, 2);
+
+        // Show Card
+        resultCard.style.display = 'block';
+    }
+
+    function showError(msg) {
+        const errorMessage = document.getElementById('errorMessage');
+        errorMessage.innerText = msg;
+        errorMessage.style.display = 'block';
+    }
+
+    // Trigger check on Enter key
+    document.getElementById('accountInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            checkAccount();
+        }
+    });
+</script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"c87fdcb0a8554342b493c3b575dc8ff0","r":1,"server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
